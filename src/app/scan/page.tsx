@@ -166,16 +166,84 @@ export default function ScanPage() {
       const scanResult: ScanResult = {
         id: Date.now().toString(),
         type: 'image',
-        productName: (aiResult?.productName as string) || (result?.analysis?.inputData?.productName as string) || 'محصول ناشناخته',
-        brand: (aiResult?.brand as string) || (result?.analysis?.inputData?.brand as string) || 'برند ناشناخته',
-        ingredients: (aiResult?.ingredients as string[]) || [],
-        nutritionalInfo: {
-          protein: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.protein as number) || ((aiResult?.nutrition as Record<string, unknown>)?.protein as number) || 0,
-          fat: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fat as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fat as number) || 0,
-          carbs: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.carbohydrates as number) || ((aiResult?.nutrition as Record<string, unknown>)?.carbs as number) || 0,
-          fiber: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fiber as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fiber as number) || 0,
-          calories: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.calories as number) || ((aiResult?.nutrition as Record<string, unknown>)?.calories as number) || 0,
-        },
+        productName: (() => {
+          // Check multiple possible locations for product name
+          if (aiResult?.productName) return aiResult.productName as string;
+          if (result?.analysis?.inputData?.productName) return result.analysis.inputData.productName as string;
+          // Check OCR productInfo
+          const ocrResult = aiResult?.ocrResult as Record<string, unknown>;
+          if (ocrResult?.productInfo) {
+            const productInfo = ocrResult.productInfo as Record<string, unknown>;
+            if (productInfo.productName) return productInfo.productName as string;
+          }
+          return 'محصول ناشناخته';
+        })(),
+        brand: (() => {
+          // Check multiple possible locations for brand
+          if (aiResult?.brand) return aiResult.brand as string;
+          if (result?.analysis?.inputData?.brand) return result.analysis.inputData.brand as string;
+          // Check OCR productInfo
+          const ocrResult = aiResult?.ocrResult as Record<string, unknown>;
+          if (ocrResult?.productInfo) {
+            const productInfo = ocrResult.productInfo as Record<string, unknown>;
+            if (productInfo.brand) return productInfo.brand as string;
+          }
+          return 'برند ناشناخته';
+        })(),
+        ingredients: (() => {
+          // Check multiple possible locations for ingredients
+          if (Array.isArray(aiResult?.ingredients)) {
+            return aiResult.ingredients as string[];
+          }
+          // Check ingredientAnalysis.mainIngredients
+          const ingredientAnalysis = aiResult?.ingredientAnalysis as Record<string, unknown>;
+          if (ingredientAnalysis?.mainIngredients && Array.isArray(ingredientAnalysis.mainIngredients)) {
+            return ingredientAnalysis.mainIngredients as string[];
+          }
+          // Check webData.ingredients
+          const webData = aiResult?.webData as Record<string, unknown>;
+          if (webData?.ingredients && Array.isArray(webData.ingredients)) {
+            return webData.ingredients as string[];
+          }
+          return [];
+        })(),
+        nutritionalInfo: (() => {
+          const nutritionalAnalysis = aiResult?.nutritionalAnalysis as Record<string, unknown>;
+          
+          // Helper function to extract percentage value
+          const extractPercentage = (data: Record<string, unknown> | undefined): number => {
+            if (data && typeof data.value === 'string') {
+              return parseFloat(data.value.replace('%', '').replace('٪', '')) || 0;
+            }
+            return 0;
+          };
+          
+          // Extract nutritional values
+          const protein = extractPercentage(nutritionalAnalysis?.protein as Record<string, unknown>);
+          const fat = extractPercentage(nutritionalAnalysis?.fat as Record<string, unknown>);
+          const fiber = extractPercentage(nutritionalAnalysis?.fiber as Record<string, unknown>);
+          const moisture = extractPercentage(nutritionalAnalysis?.moisture as Record<string, unknown>);
+          
+          // Calculate carbohydrates using the formula: Carbs (%) = 100 − (Protein% + Fat% + Moisture% + Ash% + Fiber%)
+          // Assuming ash is typically 5-8% for pet food if not provided
+          const ash = 6; // Default ash percentage
+          const carbs = Math.max(0, 100 - (protein + fat + moisture + ash + fiber));
+          
+          // Extract calories
+          const caloriesData = nutritionalAnalysis?.calories as Record<string, unknown>;
+          let calories = 0;
+          if (caloriesData && typeof caloriesData.value === 'string') {
+            calories = parseFloat(caloriesData.value.replace(/[^0-9.]/g, '')) || 0;
+          }
+          
+          return {
+            protein,
+            fat,
+            carbs,
+            fiber,
+            calories,
+          };
+        })(),
         safetyScore: (aiResult?.overallScore as number) || (aiResult?.score as number) || 0,
         warnings: (() => {
           const warnings = aiResult?.warnings as string[] | undefined;
