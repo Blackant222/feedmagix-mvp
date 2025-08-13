@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,12 +47,39 @@ export default function ScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const pets = [
-    { id: 'all', name: 'همه حیوانات', type: 'all' },
-    { id: '1', name: 'ملوس', type: 'cat' },
-    { id: '2', name: 'رکس', type: 'dog' },
-    { id: '3', name: 'نارنجی', type: 'cat' },
-  ];
+  const [pets, setPets] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [, setLoadingPets] = useState(true);
+
+  // Fetch pets from API
+  useEffect(() => {
+    const fetchPets = async () => {
+      try {
+        setLoadingPets(true);
+        const response = await apiClient.getPets();
+        if (response.error) {
+          console.error('Error fetching pets:', response.error);
+          return;
+        }
+        
+        const backendPets = response.data || [];
+        const transformedPets = [
+          { id: 'all', name: 'همه حیوانات', type: 'all' },
+          ...(backendPets as unknown as Array<{ id: string; name: string; type?: string; species?: string }>).map((pet) => ({
+            id: pet.id,
+            name: pet.name,
+            type: pet.type || pet.species || 'unknown'
+          }))
+        ];
+        setPets(transformedPets);
+      } catch (error) {
+        console.error('Error fetching pets:', error);
+      } finally {
+        setLoadingPets(false);
+      }
+    };
+    
+    fetchPets();
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -79,66 +106,89 @@ export default function ScanPage() {
     setIsScanning(false);
   }, []);
 
-  // CHANGE: Moved analyzeImage function before useCallback hooks to fix dependency issues
+  // Convert image to base64 for API
+  const convertImageToBase64 = (file: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        // Remove data:image/jpeg;base64, prefix
+        const base64Data = base64.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const analyzeImage = useCallback(async (imageData?: Blob | string) => {
     setIsAnalyzing(true);
     stopCamera();
 
     try {
-      // # FIX: Use real API call with proper structure
-       const petId = selectedPet === 'all' ? pets[0]?.id : selectedPet;
-       if (!petId) {
-         throw new Error('لطفاً یک حیوان خانگی انتخاب کنید');
-       }
+      // Get the first real pet if 'all' is selected
+      const realPets = pets.filter(p => p.id !== 'all');
+      const petId = selectedPet === 'all' ? realPets[0]?.id : selectedPet;
+      
+      if (!petId || petId === 'all') {
+        throw new Error('لطفاً یک حیوان خانگی انتخاب کنید');
+      }
 
-       const analysisRequest = {
-         petId,
-         type: 'detailed' as const,
-         inputMethod: 'camera' as const,
-         inputData: {
-           imageUrl: imageData ? URL.createObjectURL(imageData as Blob) : '',
-         },
-       };
-       
-       const response = await apiClient.analyzeFood(analysisRequest);
-       
-       if (response.error) {
-         throw new Error(response.error.message);
-       }
-       
-       const result = response.data;
+      let imageBase64 = '';
+      if (imageData instanceof Blob) {
+        imageBase64 = await convertImageToBase64(imageData);
+      }
 
-       const scanResult: ScanResult = {
-         id: Date.now().toString(),
-         type: 'image',
-         productName: result?.inputData?.productName || 'محصول ناشناخته',
-         brand: result?.inputData?.brand || 'برند ناشناخته',
-         ingredients: result?.ingredients?.map((ing: { name: string }) => ing.name) || [],
-         nutritionalInfo: {
-           protein: result?.nutritionalAnalysis?.protein?.value || 0,
-           fat: result?.nutritionalAnalysis?.fat?.value || 0,
-           carbs: result?.nutritionalAnalysis?.carbohydrates?.value || 0,
-           fiber: result?.nutritionalAnalysis?.fiber?.value || 0,
-           calories: 0, // Not provided by backend
-         },
-         safetyScore: result?.overallScore || 0,
-         warnings: result?.warnings || [],
-         recommendations: result?.recommendations || [],
-         petCompatibility: {
-           dogs: result?.suitability?.forPet ? 'safe' : 'caution',
-           cats: result?.suitability?.forPet ? 'safe' : 'caution',
-         },
-         timestamp: new Date(),
-       };
+      const analysisRequest = {
+        petId,
+        type: 'detailed' as const,
+        inputMethod: 'camera' as const,
+        inputData: {
+          imageBase64,
+          productName: '',
+          brand: ''
+        },
+      };
+       
+      const response = await apiClient.analyzeFood(analysisRequest);
+       
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+       
+      const result = response.data;
+
+      const scanResult: ScanResult = {
+        id: Date.now().toString(),
+        type: 'image',
+        productName: result?.inputData?.productName || 'محصول ناشناخته',
+        brand: result?.inputData?.brand || 'برند ناشناخته',
+        ingredients: result?.ingredients?.map((ing: { name: string }) => ing.name) || [],
+        nutritionalInfo: {
+          protein: result?.nutritionalAnalysis?.protein?.value || 0,
+          fat: result?.nutritionalAnalysis?.fat?.value || 0,
+          carbs: result?.nutritionalAnalysis?.carbohydrates?.value || 0,
+          fiber: result?.nutritionalAnalysis?.fiber?.value || 0,
+          calories: 0, // Not provided by backend
+        },
+        safetyScore: result?.overallScore || 0,
+        warnings: result?.warnings || [],
+        recommendations: result?.recommendations || [],
+        petCompatibility: {
+          dogs: result?.suitability?.forPet ? 'safe' : 'caution',
+          cats: result?.suitability?.forPet ? 'safe' : 'caution',
+        },
+        timestamp: new Date(),
+      };
 
       setScanResult(scanResult);
     } catch (error) {
       console.error('Error analyzing image:', error);
-      alert('خطا در تحلیل تصویر');
+      alert('خطا در تحلیل تصویر: ' + (error instanceof Error ? error.message : 'خطای نامشخص'));
     } finally {
       setIsAnalyzing(false);
     }
-  }, [stopCamera, selectedPet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stopCamera, selectedPet, pets]);
 
   const captureImage = useCallback(async () => {
     if (!videoRef.current) return;

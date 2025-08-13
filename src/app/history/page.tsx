@@ -63,7 +63,7 @@ interface AnalysisData {
   createdAt: string;
 }
 
-// Removed mock data - now using real backend data only
+// Mock data removed - now using real API data only
 
 const formatTimeAgo = (date: Date) => {
   const now = new Date();
@@ -171,51 +171,67 @@ export default function HistoryPage() {
   const [selectedPet, setSelectedPet] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
+  const [, setPets] = useState<Array<{ id: string; name: string }>>([]);
 
-  // # FIX: Load history from API using correct method
-   useEffect(() => {
-     const loadHistory = async () => {
-       try {
-         setLoading(true);
-         setError(null);
-         const response = await apiClient.getAnalysisHistory();
-         if (response.error) {
-           throw new Error(response.error.message);
-         }
-         // Transform backend data to frontend format
-         const backendData = response.data;
-         const analyses = backendData?.analyses || [];
+  // Load history and pets from API
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch pets first to map names
+        const petsResponse = await apiClient.getPets();
+        let petsMap: Record<string, string> = {};
+        if (!petsResponse.error && petsResponse.data) {
+          const petsData = petsResponse.data as unknown as Array<{ id: string; name: string; [key: string]: unknown }>;
+          setPets(petsData.map(pet => ({ id: pet.id, name: pet.name })));
+          petsMap = petsData.reduce((acc, pet) => {
+            acc[pet.id] = pet.name;
+            return acc;
+          }, {} as Record<string, string>);
+        }
+        
+        // Fetch analysis history
+        const response = await apiClient.getAnalysisHistory();
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
+        
+        // Transform backend data to frontend format
+        const backendData = response.data;
+        const analyses = backendData?.analyses || [];
          
-         const transformedHistory: ScanHistory[] = analyses.map((analysis: AnalysisData) => ({
-           id: analysis.id,
-           petName: 'حیوان خانگی', // This should come from pet data
-           petId: '1', // Default petId since it's not in the analysis data
-           foodName: analysis.inputData?.productName || 'غذای ناشناخته',
-           scanDate: new Date(analysis.createdAt),
-           score: analysis.overallScore,
-           status: analysis.overallScore >= 85 ? 'excellent' as const :
-                   analysis.overallScore >= 70 ? 'good' as const :
-                   analysis.overallScore >= 50 ? 'warning' as const : 'poor' as const,
-           scanType: 'image' as const, // Default since inputMethod is not in the interface
-           ingredients: analysis.ingredients.map(ing => ing.name),
-           warnings: analysis.warnings || [],
-           recommendations: analysis.recommendations || [],
-           image: analysis.inputData?.imageUrl,
-         }));
-         setHistory(transformedHistory);
-       } catch (err) {
-         console.error('Failed to load history:', err);
-         setError('خطا در بارگذاری تاریخچه');
-         setHistory([]);
-       } finally {
-         setLoading(false);
-       }
-     };
+        const transformedHistory: ScanHistory[] = analyses.map((analysis: AnalysisData) => ({
+          id: analysis.id,
+          petName: petsMap[(analysis as unknown as { petId?: string }).petId || ''] || 'حیوان خانگی',
+            petId: (analysis as unknown as { petId?: string }).petId || '1',
+          foodName: analysis.inputData?.productName || 'غذای ناشناخته',
+          scanDate: new Date(analysis.createdAt),
+          score: analysis.overallScore,
+          status: analysis.overallScore >= 85 ? 'excellent' as const :
+                  analysis.overallScore >= 70 ? 'good' as const :
+                  analysis.overallScore >= 50 ? 'warning' as const : 'poor' as const,
+          scanType: 'image' as const,
+          ingredients: analysis.ingredients.map(ing => ing.name),
+          warnings: analysis.warnings || [],
+          recommendations: analysis.recommendations || [],
+          image: analysis.inputData?.imageUrl,
+        }));
+        setHistory(transformedHistory);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        setError('خطا در بارگذاری داده‌ها');
+        setHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    };
  
-     loadHistory();
-   }, []);
+    loadData();
+  }, []);
 
-  const pets = Array.from(new Set(history.map((h) => h.petName)));
+  const petNames = Array.from(new Set(history.map((h) => h.petName)));
 
   const filteredHistory = history
     .filter((item) => {
@@ -372,7 +388,7 @@ export default function HistoryPage() {
                     className="px-3 py-2 border border-border-primary rounded-lg text-sm persian-body"
                   >
                     <option value="all">همه حیوانات</option>
-                    {pets.map((pet) => (
+                    {petNames.map((pet) => (
                       <option key={pet} value={pet}>
                         {pet}
                       </option>
