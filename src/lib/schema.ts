@@ -112,6 +112,40 @@ export const pets = pgTable(
 );
 
 /**
+ * Food Cache table - Stores OCR results and product information for reuse
+ * Prevents duplicate OCR processing for the same products
+ */
+export const foodCache = pgTable(
+  'food_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    productHash: varchar('product_hash', { length: 64 }).notNull().unique(),
+    brand: varchar('brand', { length: 200 }),
+    productName: varchar('product_name', { length: 300 }),
+    flavor: varchar('flavor', { length: 200 }),
+    extractedText: text('extracted_text').notNull(),
+    detectedSpecies: varchar('detected_species', { length: 20 }).notNull(),
+    ingredients: jsonb('ingredients').$type<string[]>().default([]),
+    nutritionalInfo: jsonb('nutritional_info').$type<Record<string, unknown>>().default({}),
+    targetSpecies: varchar('target_species', { length: 50 }),
+    lifestage: varchar('lifestage', { length: 50 }),
+    ocrConfidence: decimal('ocr_confidence', { precision: 3, scale: 2 }),
+    scanCount: integer('scan_count').default(1),
+    firstScannedAt: timestamp('first_scanned_at').defaultNow().notNull(),
+    lastScannedAt: timestamp('last_scanned_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productHashIdx: index('food_cache_product_hash_idx').on(table.productHash),
+    brandIdx: index('food_cache_brand_idx').on(table.brand),
+    productNameIdx: index('food_cache_product_name_idx').on(table.productName),
+    detectedSpeciesIdx: index('food_cache_detected_species_idx').on(table.detectedSpecies),
+    lastScannedIdx: index('food_cache_last_scanned_idx').on(table.lastScannedAt),
+  })
+);
+
+/**
  * Food Analysis table - AI-powered food analysis results
  * Stores comprehensive analysis data with caching capabilities
  */
@@ -278,4 +312,8 @@ export const apiUsageLogsRelations = relations(apiUsageLogs, ({ one }) => ({
     fields: [apiUsageLogs.userId],
     references: [users.id],
   }),
+}));
+
+export const foodCacheRelations = relations(foodCache, ({ many }) => ({
+  analyses: many(foodAnalyses),
 }));
