@@ -1,0 +1,1 @@
+ALTER TABLE "pets" ADD COLUMN "chronic_diseases" jsonb DEFAULT '[]'::jsonb;
