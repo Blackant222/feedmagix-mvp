@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/main-layout';
+import { AuthGuard } from '@/components/auth/auth-guard';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -380,8 +381,32 @@ export default function ScanPage() {
     if (!scanResult) return;
     
     try {
-      // The scan is already saved to database in the analyze API
-      // Just show success message
+      // Create a proper save request to the backend
+      const saveData = {
+        type: 'detailed' as const,
+        inputMethod: 'camera' as const,
+        inputData: {
+          productName: scanResult.productName,
+          brand: scanResult.brand || '',
+          text: `Product: ${scanResult.productName}\nIngredients: ${scanResult.ingredients.join(', ')}`
+        },
+        analysisResult: {
+          overallScore: scanResult.safetyScore,
+          summary: scanResult.summary,
+          ingredients: scanResult.ingredients,
+          warnings: scanResult.warnings,
+          recommendations: scanResult.recommendations,
+          nutritionalInfo: scanResult.nutritionalInfo,
+          petCompatibility: scanResult.petCompatibility
+        }
+      };
+
+      const response = await apiClient.saveAnalysisToHistory(saveData);
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
       alert('نتیجه با موفقیت در تاریخچه ذخیره شد!');
     } catch (error) {
       console.error('Error saving to history:', error);
@@ -472,7 +497,8 @@ export default function ScanPage() {
 
   if (scanResult) {
     return (
-      <MainLayout>
+      <AuthGuard>
+        <MainLayout>
         <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
           <div className="max-w-4xl mx-auto" ref={resultsRef}>
             <div className="flex items-center justify-between mb-6">
@@ -761,11 +787,13 @@ export default function ScanPage() {
           </div>
         </div>
       </MainLayout>
+      </AuthGuard>
     );
   }
 
   return (
-    <MainLayout>
+    <AuthGuard>
+      <MainLayout>
       <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
@@ -1016,5 +1044,6 @@ export default function ScanPage() {
         </div>
       </div>
     </MainLayout>
+    </AuthGuard>
   );
 }

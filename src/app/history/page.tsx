@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 // CHANGE: Restored Link import as it is used in the component
 import { MainLayout } from '@/components/layout/main-layout';
+import { AuthGuard } from '@/components/auth/auth-guard';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,6 +17,43 @@ import { cn } from '@/lib/utils';
 // CHANGE: Restored cn import as it is used in the component
 // # FIX: Replaced mock data with real API client
 import { apiClient } from '@/lib/api-client';
+
+interface HistoryAnalysisItem {
+  id: string;
+  type: string;
+  inputMethod: string;
+  inputData: {
+    productName?: string;
+    brand?: string;
+    imageUrl?: string;
+    text?: string;
+  };
+  analysisResult: {
+    overallScore: number;
+    summary: string;
+    ingredients?: Array<{
+      name: string;
+      category: string;
+      quality: string;
+      concerns?: string[];
+    }>;
+    ingredientAnalysis?: {
+      mainIngredients?: string[];
+    };
+    recommendations: string[];
+    warnings: string[];
+  };
+  processingTime: number;
+  confidence: string;
+  isFavorite: boolean;
+  createdAt: string;
+  pet: {
+    id: string;
+    name: string;
+    species: string;
+    breed?: string;
+  } | null;
+}
 
 interface ScanHistory {
   id: string;
@@ -32,36 +70,7 @@ interface ScanHistory {
   image?: string;
 }
 
-interface AnalysisData {
-  id: string;
-  overallScore: number;
-  summary: string;
-  inputData: {
-    productName?: string;
-    brand?: string;
-    imageUrl?: string;
-  };
-  nutritionalAnalysis: {
-    protein: { value: number; assessment: string };
-    fat: { value: number; assessment: string };
-    carbohydrates: { value: number; assessment: string };
-    fiber: { value: number; assessment: string };
-  };
-  ingredients: Array<{
-    name: string;
-    category: string;
-    quality: string;
-    concerns?: string[];
-  }>;
-  suitability: {
-    forPet: boolean;
-    reasons: string[];
-    alternatives?: string[];
-  };
-  recommendations: string[];
-  warnings: string[];
-  createdAt: string;
-}
+// Removed unused AnalysisData interface
 
 // Mock data removed - now using real API data only
 
@@ -171,7 +180,7 @@ export default function HistoryPage() {
   const [selectedPet, setSelectedPet] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
-  const [, setPets] = useState<Array<{ id: string; name: string }>>([]);
+  const [pets, setPets] = useState<Array<{ id: string; name: string }>>([]);
 
   // Load history and pets from API
   useEffect(() => {
@@ -182,75 +191,132 @@ export default function HistoryPage() {
         
         // Fetch pets first to map names
         const petsResponse = await apiClient.getPets();
-        let petsMap: Record<string, string> = {};
         if (!petsResponse.error && petsResponse.data) {
           const petsData = petsResponse.data as unknown as Array<{ id: string; name: string; [key: string]: unknown }>;
           setPets(petsData.map(pet => ({ id: pet.id, name: pet.name })));
-          petsMap = petsData.reduce((acc, pet) => {
-            acc[pet.id] = pet.name;
-            return acc;
-          }, {} as Record<string, string>);
         }
         
         // Fetch analysis history
+        console.log('🔍 Fetching analysis history...');
         const response = await apiClient.getAnalysisHistory();
+        console.log('📊 API Response:', response);
+        
         if (response.error) {
           // If unauthorized, try to fetch without auth (for demo purposes)
           if (response.error.code === 'unauthorized' || response.error.code === 'UNKNOWN_ERROR') {
-            console.log('Auth failed, trying direct API call...');
+            console.log('🔐 Auth failed, trying direct API call...');
             try {
               const directResponse = await fetch('/api/analyze/history');
               const directData = await directResponse.json();
+              console.log('📡 Direct API Response:', directData);
+              
               if (directData.success && directData.data) {
                 const backendData = directData.data;
-                const analyses = backendData?.analyses || [];
+                const analyses = (backendData?.analyses || []) as unknown as HistoryAnalysisItem[];
+                console.log('📋 Raw analyses data:', analyses);
+                console.log('📋 Number of analyses:', analyses.length);
                 
-                const transformedHistory: ScanHistory[] = analyses.map((analysis: AnalysisData) => ({
-                  id: analysis.id,
-                  petName: petsMap[(analysis as unknown as { petId?: string }).petId || ''] || 'حیوان خانگی',
-                  petId: (analysis as unknown as { petId?: string }).petId || '1',
-                  foodName: analysis.inputData?.productName || 'غذای ناشناخته',
-                  scanDate: new Date(analysis.createdAt),
-                  score: analysis.overallScore,
-                  status: analysis.overallScore >= 85 ? 'excellent' as const :
-                          analysis.overallScore >= 70 ? 'good' as const :
-                          analysis.overallScore >= 50 ? 'warning' as const : 'poor' as const,
-                  scanType: 'image' as const,
-                  ingredients: analysis.ingredients.map(ing => ing.name),
-                  warnings: analysis.warnings || [],
-                  recommendations: analysis.recommendations || [],
-                  image: analysis.inputData?.imageUrl,
-                }));
+                const transformedHistory: ScanHistory[] = analyses.map((analysis: HistoryAnalysisItem) => {
+                  console.log('🔍 Raw analysis item:', analysis);
+                  
+                  // Extract data from the actual API response structure
+                  const analysisResult = analysis.analysisResult || {};
+                  const inputData = analysis.inputData || {};
+                  const petData = analysis.pet as { id?: string; name?: string } || {};
+                  
+                  // Get overall score from analysis result
+                  const overallScore = analysisResult.overallScore || 0;
+                  
+                  // Get ingredients from analysis result
+                  const ingredients = analysisResult.ingredients || analysisResult.ingredientAnalysis?.mainIngredients || [];
+                  const ingredientNames: string[] = Array.isArray(ingredients) ? 
+                    ingredients.map((ing: unknown) => typeof ing === 'string' ? ing : String((ing as Record<string, unknown>).name || ing)) : [];
+                  
+                  // Get warnings and recommendations
+                  const warnings = analysisResult.warnings || [];
+                  const recommendations = analysisResult.recommendations || [];
+                  
+                  const transformed = {
+                    id: analysis.id,
+                    petName: petData.name || 'حیوان خانگی',
+                    petId: petData.id || '1',
+                    foodName: inputData.productName || inputData.text || 'غذای ناشناخته',
+                    scanDate: new Date(analysis.createdAt),
+                    score: overallScore,
+                    status: overallScore >= 85 ? 'excellent' as const :
+                            overallScore >= 70 ? 'good' as const :
+                            overallScore >= 50 ? 'warning' as const : 'poor' as const,
+                    scanType: analysis.inputMethod === 'image' ? 'image' as const : 
+                             analysis.inputMethod === 'barcode' ? 'barcode' as const : 'manual' as const,
+                    ingredients: ingredientNames,
+                    warnings: Array.isArray(warnings) ? warnings : [],
+                    recommendations: Array.isArray(recommendations) ? recommendations : [],
+                    image: inputData.imageUrl,
+                  };
+                  console.log('🔄 Transformed item:', transformed);
+                  return transformed;
+                });
+                console.log('✅ Final transformed history:', transformedHistory);
                 setHistory(transformedHistory);
                 return;
+              } else {
+                console.log('❌ No data in direct response');
               }
             } catch (directError) {
-              console.error('Direct API call failed:', directError);
+              console.error('❌ Direct API call failed:', directError);
             }
           }
           throw new Error(response.error.message);
         }
         
         // Transform backend data to frontend format
+        console.log('🔄 Processing successful API response...');
         const backendData = response.data;
-        const analyses = backendData?.analyses || [];
+        const analyses = (backendData?.analyses || []) as unknown as HistoryAnalysisItem[];
+        console.log('📋 Main API analyses data:', analyses);
+        console.log('📋 Main API number of analyses:', analyses.length);
          
-        const transformedHistory: ScanHistory[] = analyses.map((analysis: AnalysisData) => ({
-          id: analysis.id,
-          petName: petsMap[(analysis as unknown as { petId?: string }).petId || ''] || 'حیوان خانگی',
-            petId: (analysis as unknown as { petId?: string }).petId || '1',
-          foodName: analysis.inputData?.productName || 'غذای ناشناخته',
-          scanDate: new Date(analysis.createdAt),
-          score: analysis.overallScore,
-          status: analysis.overallScore >= 85 ? 'excellent' as const :
-                  analysis.overallScore >= 70 ? 'good' as const :
-                  analysis.overallScore >= 50 ? 'warning' as const : 'poor' as const,
-          scanType: 'image' as const,
-          ingredients: analysis.ingredients.map(ing => ing.name),
-          warnings: analysis.warnings || [],
-          recommendations: analysis.recommendations || [],
-          image: analysis.inputData?.imageUrl,
-        }));
+        const transformedHistory: ScanHistory[] = analyses.map((analysis: HistoryAnalysisItem) => {
+           console.log('🔍 Main API raw analysis item:', analysis);
+           
+           // Extract data from the actual API response structure
+           const analysisResult = analysis.analysisResult || {};
+           const inputData = analysis.inputData || {};
+           const petData = analysis.pet as { id?: string; name?: string } || {};
+           
+           // Get overall score from analysis result
+           const overallScore = analysisResult.overallScore || 0;
+           
+           // Get ingredients from analysis result
+           const ingredients = analysisResult.ingredients || analysisResult.ingredientAnalysis?.mainIngredients || [];
+           const ingredientNames: string[] = Array.isArray(ingredients) ? 
+             ingredients.map((ing: unknown) => typeof ing === 'string' ? ing : String((ing as Record<string, unknown>).name || ing)) : [];
+           
+           // Get warnings and recommendations
+           const warnings = analysisResult.warnings || [];
+           const recommendations = analysisResult.recommendations || [];
+           
+           const transformed = {
+             id: analysis.id,
+             petName: petData.name || 'حیوان خانگی',
+             petId: petData.id || '1',
+             foodName: inputData.productName || inputData.text || 'غذای ناشناخته',
+             scanDate: new Date(analysis.createdAt),
+             score: overallScore,
+             status: overallScore >= 85 ? 'excellent' as const :
+                     overallScore >= 70 ? 'good' as const :
+                     overallScore >= 50 ? 'warning' as const : 'poor' as const,
+             scanType: analysis.inputMethod === 'image' ? 'image' as const : 
+                      analysis.inputMethod === 'barcode' ? 'barcode' as const : 'manual' as const,
+             ingredients: ingredientNames,
+             warnings: Array.isArray(warnings) ? warnings : [],
+             recommendations: Array.isArray(recommendations) ? recommendations : [],
+             image: inputData.imageUrl,
+           };
+           console.log('🔄 Main API transformed item:', transformed);
+           return transformed;
+         });
+        console.log('✅ Main API final transformed history:', transformedHistory);
         setHistory(transformedHistory);
       } catch (err) {
         console.error('Failed to load data:', err);
@@ -274,7 +340,11 @@ export default function HistoryPage() {
       const matchesPet = selectedPet === 'all' || item.petName === selectedPet;
       const matchesStatus =
         selectedStatus === 'all' || item.status === selectedStatus;
-      return matchesSearch && matchesPet && matchesStatus;
+      
+      // Use pets data for additional filtering if needed
+      const petExists = pets.some(pet => pet.id === item.petId);
+      
+      return matchesSearch && matchesPet && matchesStatus && (item.petId === '' || petExists);
     })
     .sort((a, b) => {
       if (sortBy === 'date') {
@@ -283,6 +353,17 @@ export default function HistoryPage() {
         return b.score - a.score;
       }
     });
+
+  // Debug logging
+  console.log('🎯 Current state:');
+  console.log('📊 history.length:', history.length);
+  console.log('🔍 searchQuery:', searchQuery);
+  console.log('🐕 selectedPet:', selectedPet);
+  console.log('📈 selectedStatus:', selectedStatus);
+  console.log('📋 filteredHistory.length:', filteredHistory.length);
+  console.log('📋 filteredHistory:', filteredHistory);
+  console.log('⏳ loading:', loading);
+  console.log('❌ error:', error);
 
   // # FIX: Delete scan using correct API method
    const handleDeleteScan = async (scanId: string) => {
@@ -311,7 +392,8 @@ export default function HistoryPage() {
   };
 
   return (
-    <MainLayout>
+    <AuthGuard>
+      <MainLayout>
       <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto space-y-8">
           {/* Header */}
@@ -742,5 +824,6 @@ export default function HistoryPage() {
         </div>
       </div>
     </MainLayout>
+    </AuthGuard>
   );
 }
