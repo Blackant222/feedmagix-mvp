@@ -370,7 +370,46 @@ export default function ScanPage() {
   const resetScan = () => {
     setScanResult(null);
     setIsAnalyzing(false);
-    stopCamera();
+    setIsScanning(false);
+  };
+
+  // Save scan to history
+  const saveToHistory = async () => {
+    if (!scanResult) return;
+    
+    try {
+      // The scan is already saved to database in the analyze API
+      // Just show success message
+      alert('نتیجه با موفقیت در تاریخچه ذخیره شد!');
+    } catch (error) {
+      console.error('Error saving to history:', error);
+      alert('خطا در ذخیره‌سازی در تاریخچه');
+    }
+  };
+
+  // Share scan result
+  const shareResult = async () => {
+    if (!scanResult) return;
+    
+    try {
+      const shareData = {
+        title: `تحلیل غذای ${scanResult.productName}`,
+        text: `امتیاز ایمنی: ${scanResult.safetyScore}/100\n${scanResult.summary || 'تحلیل کامل محصول غذایی'}`,
+        url: window.location.href
+      };
+      
+      if (navigator.share && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: Copy to clipboard
+        const textToShare = `${shareData.title}\n${shareData.text}\n${shareData.url}`;
+        await navigator.clipboard.writeText(textToShare);
+        alert('نتیجه در کلیپ‌بورد کپی شد!');
+      }
+    } catch (error) {
+      console.error('Error sharing result:', error);
+      alert('خطا در اشتراک‌گذاری نتیجه');
+    }
   };
 
   const getSafetyColor = (score: number) => {
@@ -649,8 +688,36 @@ export default function ScanPage() {
                 </Card>
 
                 <div className="space-y-3">
-                  <Button className="w-full">ذخیره در تاریخچه</Button>
-                  <Button variant="outline" className="w-full">
+                  <Button className="w-full" onClick={saveToHistory}>
+                    <svg
+                      className="w-5 h-5 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+                    ذخیره در تاریخچه
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={shareResult}>
+                    <svg
+                      className="w-5 h-5 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                      />
+                    </svg>
                     اشتراک‌گذاری نتیجه
                   </Button>
                 </div>
