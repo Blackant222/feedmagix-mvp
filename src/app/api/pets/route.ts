@@ -97,13 +97,14 @@ export async function GET(request: NextRequest) {
       .where(eq(pets.userId, user.user.id))
       .orderBy(pets.createdAt);
 
-    return NextResponse.json(
-      {
-        success: true,
-        pets: userPets,
-      },
-      { status: 200 }
-    );
+    // Transform species to type for frontend compatibility
+    const transformedPets = userPets.map(pet => ({
+      ...pet,
+      type: pet.species,
+      species: undefined
+    }));
+
+    return NextResponse.json(transformedPets, { status: 200 });
   } catch (error) {
     console.error('Get pets error:', error);
     return NextResponse.json(
@@ -203,11 +204,18 @@ export async function POST(request: NextRequest) {
       .values(insertData)
       .returning();
 
+    // Transform species to type for frontend compatibility
+    const transformedPet = {
+      ...newPet,
+      type: newPet.species,
+      species: undefined
+    };
+
     return NextResponse.json(
       {
         success: true,
         message: 'حیوان خانگی با موفقیت اضافه شد',
-        pet: newPet,
+        pet: transformedPet,
       },
       { status: 201 }
     );
