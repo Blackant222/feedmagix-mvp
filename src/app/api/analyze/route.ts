@@ -105,20 +105,21 @@ async function checkProductCache(productHash: string) {
 /**
  * Save product to cache for future use
  */
-async function saveProductToCache(productHash: string, ocrResult: any, productData: any) {
+async function saveProductToCache(productHash: string, ocrResult: Record<string, unknown>, productData: Record<string, unknown>) {
   try {
+    const productInfo = ocrResult.productInfo as Record<string, unknown> || {};
     await db.insert(foodCache).values({
       productHash,
-      brand: (productData.brand || ocrResult.productInfo?.brand || null) as string | null,
-      productName: (productData.productName || ocrResult.productInfo?.productName || null) as string | null,
-      flavor: (ocrResult.productInfo?.flavor || null) as string | null,
+      brand: (productData.brand || productInfo.brand || null) as string | null,
+      productName: (productData.productName || productInfo.productName || null) as string | null,
+      flavor: (productInfo.flavor || null) as string | null,
       extractedText: ocrResult.extractedText as string,
       detectedSpecies: ocrResult.detectedSpecies as string,
       ingredients: (productData.ingredients || []) as string[],
       nutritionalInfo: (productData.nutritionalInfo || {}) as Record<string, unknown>,
       targetSpecies: (productData.targetSpecies || null) as string | null,
       lifestage: (productData.lifestage || null) as string | null,
-      ocrConfidence: '0.85', // Default confidence as string
+      ocrConfidence: String(ocrResult.confidence || 0.85), // Convert to string
     });
     
     console.log('✅ Product saved to cache with hash:', productHash);
@@ -209,7 +210,7 @@ class FoodAnalysisAgents {
         };
         console.log('✅ Agent 1 (OCR): Completed successfully:', result);
         return result;
-      } catch (parseError) {
+      } catch {
         console.log('⚠️ Agent 1 (OCR): JSON parse failed, using fallback');
         return {
           extractedText: content,
