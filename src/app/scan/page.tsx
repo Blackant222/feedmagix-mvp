@@ -20,6 +20,7 @@ interface ScanResult {
   type: 'image';
   productName: string;
   brand?: string;
+  summary?: string;
   ingredients: string[];
   nutritionalInfo: {
     protein: number;
@@ -166,16 +167,119 @@ export default function ScanPage() {
       const scanResult: ScanResult = {
         id: Date.now().toString(),
         type: 'image',
-        productName: (aiResult?.productName as string) || (result?.analysis?.inputData?.productName as string) || 'محصول ناشناخته',
-        brand: (aiResult?.brand as string) || (result?.analysis?.inputData?.brand as string) || 'برند ناشناخته',
-        ingredients: (aiResult?.ingredients as string[]) || [],
-        nutritionalInfo: {
-          protein: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.protein as number) || ((aiResult?.nutrition as Record<string, unknown>)?.protein as number) || 0,
-          fat: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fat as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fat as number) || 0,
-          carbs: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.carbohydrates as number) || ((aiResult?.nutrition as Record<string, unknown>)?.carbs as number) || 0,
-          fiber: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fiber as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fiber as number) || 0,
-          calories: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.calories as number) || ((aiResult?.nutrition as Record<string, unknown>)?.calories as number) || 0,
-        },
+        productName: (() => {
+          // Extract product name from summary if available
+          const summary = aiResult?.summary as string;
+          if (summary && summary.includes('Royal Canin')) {
+            // Extract product name from summary
+            const match = summary.match(/غذای\s+([^\s]+(?:\s+[^\s]+)*?)\s+برای/);
+            if (match) return match[1];
+          }
+          
+          // Check multiple possible locations for product name
+          if (aiResult?.productName) return aiResult.productName as string;
+          if (result?.analysis?.inputData?.productName) return result.analysis.inputData.productName as string;
+          
+          // Check OCR productInfo
+          const ocrResult = aiResult?.ocrResult as Record<string, unknown>;
+          if (ocrResult?.productInfo) {
+            const productInfo = ocrResult.productInfo as Record<string, unknown>;
+            if (productInfo.productName) return productInfo.productName as string;
+          }
+          
+          // Check if product name is in the summary text
+          if (summary) {
+            const productMatch = summary.match(/([A-Za-z\s]+(?:Veterinary|Diet|Pro|Premium)[A-Za-z\s]*)/i);
+            if (productMatch) return productMatch[1].trim();
+          }
+          
+          return 'محصول ناشناخته';
+        })(),
+        brand: (() => {
+          // Extract brand from summary if available
+          const summary = aiResult?.summary as string;
+          if (summary) {
+            if (summary.includes('Royal Canin')) return 'Royal Canin';
+            if (summary.includes('Hill\'s')) return 'Hill\'s';
+            if (summary.includes('Purina')) return 'Purina';
+            if (summary.includes('Whiskas')) return 'Whiskas';
+            if (summary.includes('Pedigree')) return 'Pedigree';
+          }
+          
+          // Check multiple possible locations for brand
+          if (aiResult?.brand) return aiResult.brand as string;
+          if (result?.analysis?.inputData?.brand) return result.analysis.inputData.brand as string;
+          
+          // Check OCR productInfo
+          const ocrResult = aiResult?.ocrResult as Record<string, unknown>;
+          if (ocrResult?.productInfo) {
+            const productInfo = ocrResult.productInfo as Record<string, unknown>;
+            if (productInfo.brand) return productInfo.brand as string;
+          }
+          
+          return 'برند ناشناخته';
+        })(),
+        summary: aiResult?.summary as string || undefined,
+        ingredients: (() => {
+          // Check multiple possible locations for ingredients
+          if (Array.isArray(aiResult?.ingredients)) {
+            return aiResult.ingredients as string[];
+          }
+          // Check ingredientAnalysis.mainIngredients
+          const ingredientAnalysis = aiResult?.ingredientAnalysis as Record<string, unknown>;
+          if (ingredientAnalysis?.mainIngredients && Array.isArray(ingredientAnalysis.mainIngredients)) {
+            return ingredientAnalysis.mainIngredients as string[];
+          }
+          // Check webData.ingredients
+          const webData = aiResult?.webData as Record<string, unknown>;
+          if (webData?.ingredients && Array.isArray(webData.ingredients)) {
+            return webData.ingredients as string[];
+          }
+          return [];
+        })(),
+        nutritionalInfo: (() => {
+          const nutritionalAnalysis = aiResult?.nutritionalAnalysis as Record<string, unknown>;
+          
+          // Helper function to extract percentage value
+          const extractPercentage = (data: Record<string, unknown> | undefined): number => {
+            if (data && typeof data.value === 'string') {
+              const value = data.value;
+              // Skip placeholder values like X%, Y%, Z%, W%
+              if (value.match(/^[A-Z]%$/)) {
+                return 0;
+              }
+              const numericValue = parseFloat(value.replace('%', '').replace('٪', ''));
+              return isNaN(numericValue) ? 0 : numericValue;
+            }
+            return 0;
+          };
+          
+          // Extract nutritional values
+          const protein = extractPercentage(nutritionalAnalysis?.protein as Record<string, unknown>);
+          const fat = extractPercentage(nutritionalAnalysis?.fat as Record<string, unknown>);
+          const fiber = extractPercentage(nutritionalAnalysis?.fiber as Record<string, unknown>);
+          const moisture = extractPercentage(nutritionalAnalysis?.moisture as Record<string, unknown>);
+          
+          // Calculate carbohydrates using the formula: Carbs (%) = 100 − (Protein% + Fat% + Moisture% + Ash% + Fiber%)
+          // Assuming ash is typically 5-8% for pet food if not provided
+          const ash = 6; // Default ash percentage
+          const carbs = Math.max(0, 100 - (protein + fat + moisture + ash + fiber));
+          
+          // Extract calories
+          const caloriesData = nutritionalAnalysis?.calories as Record<string, unknown>;
+          let calories = 0;
+          if (caloriesData && typeof caloriesData.value === 'string') {
+            calories = parseFloat(caloriesData.value.replace(/[^0-9.]/g, '')) || 0;
+          }
+          
+          return {
+            protein,
+            fat,
+            carbs,
+            fiber,
+            calories,
+          };
+        })(),
         safetyScore: (aiResult?.overallScore as number) || (aiResult?.score as number) || 0,
         warnings: (() => {
           const warnings = aiResult?.warnings as string[] | undefined;
@@ -361,6 +465,20 @@ export default function ScanPage() {
                         />
                       </div>
                     </div>
+
+                    {/* AI Summary Section */}
+                    {scanResult.summary && (
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-text-primary persian-heading mb-3">
+                          خلاصه تحلیل هوش مصنوعی
+                        </h3>
+                        <div className="bg-background-secondary rounded-lg p-4">
+                          <p className="text-text-secondary persian-body leading-relaxed">
+                            {scanResult.summary}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid md:grid-cols-2 gap-6">
                       <div>
