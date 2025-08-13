@@ -198,7 +198,14 @@ class FoodAnalysisAgents {
       console.log('🔍 Agent 1 (OCR): Raw response:', content);
       
       try {
-        const parsed = JSON.parse(content);
+        // Try to extract JSON from the content if it's wrapped in markdown
+        let jsonContent = content;
+        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonContent = jsonMatch[1];
+        }
+        
+        const parsed = JSON.parse(jsonContent);
         const result = {
           extractedText: parsed.extractedText || '',
           detectedSpecies: parsed.detectedSpecies || 'unknown',
@@ -210,12 +217,20 @@ class FoodAnalysisAgents {
         };
         console.log('✅ Agent 1 (OCR): Completed successfully:', result);
         return result;
-      } catch {
-        console.log('⚠️ Agent 1 (OCR): JSON parse failed, using fallback');
+      } catch (parseError) {
+        console.log('⚠️ Agent 1 (OCR): JSON parse failed, using fallback. Error:', parseError);
+        // Try to extract basic info from raw text
+        const extractedText = content;
+        const detectedSpecies = content.toLowerCase().includes('cat') || content.toLowerCase().includes('گربه') ? 'cat' : 
+                              content.toLowerCase().includes('dog') || content.toLowerCase().includes('سگ') ? 'dog' : 'unknown';
+        
         return {
-          extractedText: content,
-          detectedSpecies: 'unknown' as const,
-          productInfo: {},
+          extractedText,
+          detectedSpecies: detectedSpecies as 'cat' | 'dog' | 'unknown',
+          productInfo: {
+            brand: content.includes('ROYAL CANIN') ? 'ROYAL CANIN' : undefined,
+            productName: content.includes('VETERINARY') ? content.split('\n')[0] : undefined,
+          },
         };
       }
     } catch (error) {
