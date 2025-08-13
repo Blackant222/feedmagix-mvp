@@ -156,27 +156,32 @@ export default function ScanPage() {
         throw new Error(response.error.message);
       }
        
-      const result = response.data;
+      const result = response.data as unknown as { analysis?: { analysisResult?: Record<string, unknown>; inputData?: Record<string, unknown> } };
+      console.log('Frontend received analysis result:', JSON.stringify(result, null, 2));
+      
+      // The API returns { analysis: savedAnalysis } where savedAnalysis.analysisResult contains the AI output
+      const aiResult = result?.analysis?.analysisResult as Record<string, unknown> || {};
+      console.log('AI Result extracted:', JSON.stringify(aiResult, null, 2));
 
       const scanResult: ScanResult = {
         id: Date.now().toString(),
         type: 'image',
-        productName: result?.inputData?.productName || 'محصول ناشناخته',
-        brand: result?.inputData?.brand || 'برند ناشناخته',
-        ingredients: result?.ingredients?.map((ing: { name: string }) => ing.name) || [],
+        productName: (aiResult?.productName as string) || (result?.analysis?.inputData?.productName as string) || 'محصول ناشناخته',
+        brand: (aiResult?.brand as string) || (result?.analysis?.inputData?.brand as string) || 'برند ناشناخته',
+        ingredients: (aiResult?.ingredients as string[]) || [],
         nutritionalInfo: {
-          protein: result?.nutritionalAnalysis?.protein?.value || 0,
-          fat: result?.nutritionalAnalysis?.fat?.value || 0,
-          carbs: result?.nutritionalAnalysis?.carbohydrates?.value || 0,
-          fiber: result?.nutritionalAnalysis?.fiber?.value || 0,
-          calories: 0, // Not provided by backend
+          protein: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.protein as number) || ((aiResult?.nutrition as Record<string, unknown>)?.protein as number) || 0,
+          fat: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fat as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fat as number) || 0,
+          carbs: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.carbohydrates as number) || ((aiResult?.nutrition as Record<string, unknown>)?.carbs as number) || 0,
+          fiber: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.fiber as number) || ((aiResult?.nutrition as Record<string, unknown>)?.fiber as number) || 0,
+          calories: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.calories as number) || ((aiResult?.nutrition as Record<string, unknown>)?.calories as number) || 0,
         },
-        safetyScore: result?.overallScore || 0,
-        warnings: result?.warnings || [],
-        recommendations: result?.recommendations || [],
+        safetyScore: (aiResult?.overallScore as number) || (aiResult?.score as number) || 0,
+        warnings: (aiResult?.warnings as string[]) || [],
+        recommendations: (aiResult?.recommendations as string[]) || [],
         petCompatibility: {
-          dogs: result?.suitability?.forPet ? 'safe' : 'caution',
-          cats: result?.suitability?.forPet ? 'safe' : 'caution',
+          dogs: ((aiResult?.petCompatibility as Record<string, unknown>)?.dogs as 'safe' | 'caution' | 'dangerous') || (aiResult?.suitability ? 'safe' : 'caution'),
+          cats: ((aiResult?.petCompatibility as Record<string, unknown>)?.cats as 'safe' | 'caution' | 'dangerous') || (aiResult?.suitability ? 'safe' : 'caution'),
         },
         timestamp: new Date(),
       };
