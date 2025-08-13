@@ -177,8 +177,43 @@ export default function ScanPage() {
           calories: ((aiResult?.nutritionalAnalysis as Record<string, unknown>)?.calories as number) || ((aiResult?.nutrition as Record<string, unknown>)?.calories as number) || 0,
         },
         safetyScore: (aiResult?.overallScore as number) || (aiResult?.score as number) || 0,
-        warnings: (aiResult?.warnings as string[]) || [],
-        recommendations: (aiResult?.recommendations as string[]) || [],
+        warnings: (() => {
+          const warnings = aiResult?.warnings as string[] | undefined;
+          if (Array.isArray(warnings)) {
+            return warnings;
+          }
+          // Check if warnings are in recommendations object
+          const recs = aiResult?.recommendations as Record<string, unknown> | undefined;
+          if (recs && typeof recs === 'object' && Array.isArray(recs.warnings)) {
+            return recs.warnings as string[];
+          }
+          // Check ingredient analysis concerns
+          const ingredientAnalysis = aiResult?.ingredientAnalysis as Record<string, unknown> | undefined;
+          if (ingredientAnalysis && Array.isArray(ingredientAnalysis.concerns)) {
+            return ingredientAnalysis.concerns as string[];
+          }
+          return [];
+        })(),
+        recommendations: (() => {
+          const recs = aiResult?.recommendations as string[] | Record<string, unknown> | undefined;
+          if (Array.isArray(recs)) {
+            return recs;
+          }
+          if (recs && typeof recs === 'object') {
+            const recommendations: string[] = [];
+            if (recs.feedingAdvice && typeof recs.feedingAdvice === 'string') {
+              recommendations.push(recs.feedingAdvice);
+            }
+            if (recs.alternatives && Array.isArray(recs.alternatives)) {
+              recommendations.push(...recs.alternatives.map((alt: string) => `جایگزین: ${alt}`));
+            }
+            if (recs.warnings && Array.isArray(recs.warnings)) {
+              recommendations.push(...recs.warnings.map((warn: string) => `⚠️ ${warn}`));
+            }
+            return recommendations;
+          }
+          return [];
+        })(),
         petCompatibility: {
           dogs: ((aiResult?.petCompatibility as Record<string, unknown>)?.dogs as 'safe' | 'caution' | 'dangerous') || (aiResult?.suitability ? 'safe' : 'caution'),
           cats: ((aiResult?.petCompatibility as Record<string, unknown>)?.cats as 'safe' | 'caution' | 'dangerous') || (aiResult?.suitability ? 'safe' : 'caution'),
