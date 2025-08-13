@@ -442,15 +442,23 @@ class FoodAnalysisAgents {
       Product Data: ${JSON.stringify(productData)}
       Web Research: ${JSON.stringify(webData)}
       
+      IMPORTANT INSTRUCTIONS:
+      1. Extract REAL nutritional percentages from the provided data (Product Data and Web Research)
+      2. If nutritional data is available in guaranteedAnalysis or nutritionalInfo, use those exact values
+      3. If no nutritional data is available, return "0%" for that nutrient
+      4. NEVER return placeholder values like "X%", "Y%", "Z%", "W%"
+      5. Extract the actual product name and brand from the provided data
+      6. Use ingredients from webData if available
+      
       CRITICAL: Return ONLY valid JSON with this exact structure:
       {
         "overallScore": number (0-100),
         "summary": "خلاصه کامل به فارسی",
         "nutritionalAnalysis": {
-          "protein": {"value": "X%", "assessment": "ارزیابی", "score": number},
-          "fat": {"value": "Y%", "assessment": "ارزیابی", "score": number},
-          "fiber": {"value": "Z%", "assessment": "ارزیابی", "score": number},
-          "moisture": {"value": "W%", "assessment": "ارزیابی", "score": number}
+          "protein": {"value": "actual_percentage%", "assessment": "ارزیابی", "score": number},
+          "fat": {"value": "actual_percentage%", "assessment": "ارزیابی", "score": number},
+          "fiber": {"value": "actual_percentage%", "assessment": "ارزیابی", "score": number},
+          "moisture": {"value": "actual_percentage%", "assessment": "ارزیابی", "score": number}
         },
         "ingredientAnalysis": {
           "mainIngredients": ["مواد اصلی"],
