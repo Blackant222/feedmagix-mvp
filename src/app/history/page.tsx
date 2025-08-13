@@ -365,19 +365,27 @@ export default function HistoryPage() {
   console.log('⏳ loading:', loading);
   console.log('❌ error:', error);
 
-  // # FIX: Delete scan using correct API method
-   const handleDeleteScan = async (scanId: string) => {
-     if (confirm('آیا مطمئن هستید که می‌خواهید این اسکن را حذف کنید؟')) {
-       try {
-         // Note: Delete functionality may not be implemented in backend
-         // For now, just remove from local state
-         setHistory(history.filter((h) => h.id !== scanId));
-       } catch (err) {
-         console.error('Failed to delete scan:', err);
-         alert('خطا در حذف اسکن');
-       }
-     }
-   };
+  // Delete scan using API method
+  const handleDeleteScan = async (scanId: string) => {
+    if (confirm('آیا مطمئن هستید که می‌خواهید این اسکن را حذف کنید؟')) {
+      try {
+        const response = await apiClient.deleteAnalysis(scanId);
+        if (response.error) {
+          if (response.error.code === 'unauthorized') {
+            alert('لطفاً وارد حساب کاربری خود شوید');
+            return;
+          }
+          throw new Error(response.error.message);
+        }
+        // Update local state after successful deletion
+        setHistory(history.filter((h) => h.id !== scanId));
+        alert('اسکن با موفقیت حذف شد');
+      } catch (err) {
+        console.error('Failed to delete scan:', err);
+        alert('خطا در حذف اسکن');
+      }
+    }
+  };
 
   const stats = {
     totalScans: history.length,

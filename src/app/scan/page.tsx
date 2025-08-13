@@ -173,11 +173,6 @@ export default function ScanPage() {
         productName: (() => {
           // Extract product name from summary if available
           const summary = aiResult?.summary as string;
-          if (summary && summary.includes('Royal Canin')) {
-            // Extract product name from summary
-            const match = summary.match(/غذای\s+([^\s]+(?:\s+[^\s]+)*?)\s+برای/);
-            if (match) return match[1];
-          }
           
           // Check multiple possible locations for product name
           if (aiResult?.productName) return aiResult.productName as string;
@@ -190,10 +185,61 @@ export default function ScanPage() {
             if (productInfo.productName) return productInfo.productName as string;
           }
           
-          // Check if product name is in the summary text
+          // Enhanced product name extraction from summary
           if (summary) {
-            const productMatch = summary.match(/([A-Za-z\s]+(?:Veterinary|Diet|Pro|Premium)[A-Za-z\s]*)/i);
-            if (productMatch) return productMatch[1].trim();
+            // Try to extract product name patterns from Persian text
+            const patterns = [
+              /غذای\s+([^\s]+(?:\s+[^\s]+)*?)\s+(?:برای|با|حاوی)/,
+              /([A-Za-z][A-Za-z\s]*(?:Veterinary|Diet|Pro|Premium|Adult|Kitten|Puppy|Senior)[A-Za-z\s]*)/i,
+              /([A-Za-z][A-Za-z\s]*(?:Cat|Dog|Pet)\s+Food[A-Za-z\s]*)/i,
+              /([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+(?:با طعم|برای)/,
+              /(Royal Canin[A-Za-z\s]*)/i,
+              /(Hill's[A-Za-z\s]*)/i,
+              /(Purina[A-Za-z\s]*)/i,
+              /(Whiskas[A-Za-z\s]*)/i,
+              /(Pedigree[A-Za-z\s]*)/i
+            ];
+            
+            for (const pattern of patterns) {
+              const match = summary.match(pattern);
+              if (match && match[1]) {
+                const productName = match[1].trim();
+                if (productName.length > 2) {
+                  return productName;
+                }
+              }
+            }
+            
+            // If no pattern matches, try to extract brand + product type
+            const brandMatch = summary.match(/(Royal Canin|Hill's|Purina|Whiskas|Pedigree)/i);
+            if (brandMatch) {
+              const brand = brandMatch[1];
+              const typeMatch = summary.match(/غذای\s+(گربه|سگ|حیوان خانگی)/i);
+              if (typeMatch) {
+                return `${brand} ${typeMatch[1]}`;
+              }
+              return brand;
+            }
+          }
+          
+          // Check input data for any text that might contain product name
+          const inputData = result?.analysis?.inputData as Record<string, unknown> | undefined;
+          if (inputData?.text && typeof inputData.text === 'string') {
+            const textPatterns = [
+              /([A-Za-z][A-Za-z\s]*(?:Cat|Dog|Pet)\s+Food[A-Za-z\s]*)/i,
+              /(Royal Canin[A-Za-z\s]*)/i,
+              /(Hill's[A-Za-z\s]*)/i,
+              /(Purina[A-Za-z\s]*)/i,
+              /(Whiskas[A-Za-z\s]*)/i,
+              /(Pedigree[A-Za-z\s]*)/i
+            ];
+            
+            for (const pattern of textPatterns) {
+              const match = inputData.text.match(pattern);
+              if (match && match[1]) {
+                return match[1].trim();
+              }
+            }
           }
           
           return 'محصول ناشناخته';

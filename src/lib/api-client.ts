@@ -300,6 +300,12 @@ class ApiClient {
     return this.makeRequest<FoodAnalysisResult>(`/api/analyze/history/${analysisId}`);
   }
 
+  async deleteAnalysis(analysisId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest<{ success: boolean }>(`/api/analyze/history/${analysisId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // User settings methods
   async getUserSettings(): Promise<ApiResponse<UserProfile>> {
     return this.getUserProfile();
