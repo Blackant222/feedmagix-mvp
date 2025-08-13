@@ -254,6 +254,41 @@ class ApiClient {
     return this.makeRequest<AnalysisHistoryResponse>(endpoint);
   }
 
+  async saveAnalysisToHistory(analysisData: {
+    type: 'quick' | 'detailed';
+    inputMethod: 'camera' | 'text' | 'barcode';
+    petId?: string;
+    inputData: {
+      productName?: string;
+      brand?: string;
+      text?: string;
+      imageUrl?: string;
+    };
+    analysisResult: {
+      overallScore: number;
+      summary?: string;
+      ingredients: string[];
+      warnings: string[];
+      recommendations: string[];
+      nutritionalInfo?: {
+        protein: number;
+        fat: number;
+        carbs: number;
+        fiber: number;
+        calories: number;
+      };
+      petCompatibility?: {
+        dogs: 'safe' | 'caution' | 'dangerous';
+        cats: 'safe' | 'caution' | 'dangerous';
+      };
+    };
+  }): Promise<ApiResponse<FoodAnalysisResult>> {
+    return this.makeRequest<FoodAnalysisResult>('/api/analyze/save', {
+      method: 'POST',
+      body: JSON.stringify(analysisData),
+    });
+  }
+
   async updateAnalysis(analysisId: string, data: Partial<FoodAnalysisResult>): Promise<ApiResponse<FoodAnalysisResult>> {
     return this.makeRequest<FoodAnalysisResult>(`/api/analyze/history/${analysisId}`, {
       method: 'PUT',
@@ -263,6 +298,12 @@ class ApiClient {
 
   async getAnalysisById(analysisId: string): Promise<ApiResponse<FoodAnalysisResult>> {
     return this.makeRequest<FoodAnalysisResult>(`/api/analyze/history/${analysisId}`);
+  }
+
+  async deleteAnalysis(analysisId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.makeRequest<{ success: boolean }>(`/api/analyze/history/${analysisId}`, {
+      method: 'DELETE',
+    });
   }
 
   // User settings methods

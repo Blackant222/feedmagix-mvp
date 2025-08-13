@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/main-layout';
+import { AuthGuard } from '@/components/auth/auth-guard';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -14,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 // # FIX: Replaced mock data with real API client
 import { apiClient } from '@/lib/api-client';
+import html2canvas from 'html2canvas';
 
 interface ScanResult {
   id: string;
@@ -47,6 +49,7 @@ export default function ScanPage() {
   const [selectedPet, setSelectedPet] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const [pets, setPets] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [, setLoadingPets] = useState(true);
@@ -170,11 +173,6 @@ export default function ScanPage() {
         productName: (() => {
           // Extract product name from summary if available
           const summary = aiResult?.summary as string;
-          if (summary && summary.includes('Royal Canin')) {
-            // Extract product name from summary
-            const match = summary.match(/غذای\s+([^\s]+(?:\s+[^\s]+)*?)\s+برای/);
-            if (match) return match[1];
-          }
           
           // Check multiple possible locations for product name
           if (aiResult?.productName) return aiResult.productName as string;
@@ -187,10 +185,61 @@ export default function ScanPage() {
             if (productInfo.productName) return productInfo.productName as string;
           }
           
-          // Check if product name is in the summary text
+          // Enhanced product name extraction from summary
           if (summary) {
-            const productMatch = summary.match(/([A-Za-z\s]+(?:Veterinary|Diet|Pro|Premium)[A-Za-z\s]*)/i);
-            if (productMatch) return productMatch[1].trim();
+            // Try to extract product name patterns from Persian text
+            const patterns = [
+              /غذای\s+([^\s]+(?:\s+[^\s]+)*?)\s+(?:برای|با|حاوی)/,
+              /([A-Za-z][A-Za-z\s]*(?:Veterinary|Diet|Pro|Premium|Adult|Kitten|Puppy|Senior)[A-Za-z\s]*)/i,
+              /([A-Za-z][A-Za-z\s]*(?:Cat|Dog|Pet)\s+Food[A-Za-z\s]*)/i,
+              /([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+(?:با طعم|برای)/,
+              /(Royal Canin[A-Za-z\s]*)/i,
+              /(Hill's[A-Za-z\s]*)/i,
+              /(Purina[A-Za-z\s]*)/i,
+              /(Whiskas[A-Za-z\s]*)/i,
+              /(Pedigree[A-Za-z\s]*)/i
+            ];
+            
+            for (const pattern of patterns) {
+              const match = summary.match(pattern);
+              if (match && match[1]) {
+                const productName = match[1].trim();
+                if (productName.length > 2) {
+                  return productName;
+                }
+              }
+            }
+            
+            // If no pattern matches, try to extract brand + product type
+            const brandMatch = summary.match(/(Royal Canin|Hill's|Purina|Whiskas|Pedigree)/i);
+            if (brandMatch) {
+              const brand = brandMatch[1];
+              const typeMatch = summary.match(/غذای\s+(گربه|سگ|حیوان خانگی)/i);
+              if (typeMatch) {
+                return `${brand} ${typeMatch[1]}`;
+              }
+              return brand;
+            }
+          }
+          
+          // Check input data for any text that might contain product name
+          const inputData = result?.analysis?.inputData as Record<string, unknown> | undefined;
+          if (inputData?.text && typeof inputData.text === 'string') {
+            const textPatterns = [
+              /([A-Za-z][A-Za-z\s]*(?:Cat|Dog|Pet)\s+Food[A-Za-z\s]*)/i,
+              /(Royal Canin[A-Za-z\s]*)/i,
+              /(Hill's[A-Za-z\s]*)/i,
+              /(Purina[A-Za-z\s]*)/i,
+              /(Whiskas[A-Za-z\s]*)/i,
+              /(Pedigree[A-Za-z\s]*)/i
+            ];
+            
+            for (const pattern of textPatterns) {
+              const match = inputData.text.match(pattern);
+              if (match && match[1]) {
+                return match[1].trim();
+              }
+            }
           }
           
           return 'محصول ناشناخته';
@@ -370,7 +419,103 @@ export default function ScanPage() {
   const resetScan = () => {
     setScanResult(null);
     setIsAnalyzing(false);
-    stopCamera();
+    setIsScanning(false);
+  };
+
+  // Save scan to history
+  const saveToHistory = async () => {
+    if (!scanResult) return;
+    
+    try {
+      // Create a proper save request to the backend
+      const saveData = {
+        type: 'detailed' as const,
+        inputMethod: 'camera' as const,
+        inputData: {
+          productName: scanResult.productName,
+          brand: scanResult.brand || '',
+          text: `Product: ${scanResult.productName}\nIngredients: ${scanResult.ingredients.join(', ')}`
+        },
+        analysisResult: {
+          overallScore: scanResult.safetyScore,
+          summary: scanResult.summary,
+          ingredients: scanResult.ingredients,
+          warnings: scanResult.warnings,
+          recommendations: scanResult.recommendations,
+          nutritionalInfo: scanResult.nutritionalInfo,
+          petCompatibility: scanResult.petCompatibility
+        }
+      };
+
+      const response = await apiClient.saveAnalysisToHistory(saveData);
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      alert('نتیجه با موفقیت در تاریخچه ذخیره شد!');
+    } catch (error) {
+      console.error('Error saving to history:', error);
+      alert('خطا در ذخیره‌سازی در تاریخچه');
+    }
+  };
+
+  // Share scan result
+  const shareResult = async () => {
+    if (!scanResult) return;
+    
+    try {
+      // Take screenshot of results
+      let screenshotBlob: Blob | null = null;
+      if (resultsRef.current) {
+        try {
+          const canvas = await html2canvas(resultsRef.current, {
+             background: '#ffffff',
+             useCORS: true,
+             allowTaint: true
+           });
+          
+          screenshotBlob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => {
+              resolve(blob!);
+            }, 'image/png', 0.9);
+          });
+        } catch (screenshotError) {
+          console.warn('Screenshot failed:', screenshotError);
+        }
+      }
+      
+      const shareData = {
+        title: `تحلیل غذای ${scanResult.productName}`,
+        text: `امتیاز ایمنی: ${scanResult.safetyScore}/100\n${scanResult.summary || 'تحلیل کامل محصول غذایی'}`,
+        url: window.location.href,
+        ...(screenshotBlob && { files: [new File([screenshotBlob], 'scan-result.png', { type: 'image/png' })] })
+      };
+      
+      if (navigator.share && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: Copy to clipboard or download screenshot
+        if (screenshotBlob) {
+          const url = URL.createObjectURL(screenshotBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `تحلیل-غذا-${scanResult.productName}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          alert('تصویر نتیجه دانلود شد!');
+        } else {
+          const textToShare = `${shareData.title}\n${shareData.text}\n${shareData.url}`;
+          await navigator.clipboard.writeText(textToShare);
+          alert('نتیجه در کلیپ‌بورد کپی شد!');
+        }
+      }
+    } catch (error) {
+      console.error('Error sharing result:', error);
+      alert('خطا در اشتراک‌گذاری نتیجه');
+    }
   };
 
   const getSafetyColor = (score: number) => {
@@ -398,9 +543,10 @@ export default function ScanPage() {
 
   if (scanResult) {
     return (
-      <MainLayout>
+      <AuthGuard>
+        <MainLayout>
         <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto" ref={resultsRef}>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-h1 font-bold text-text-primary persian-heading">
@@ -649,8 +795,36 @@ export default function ScanPage() {
                 </Card>
 
                 <div className="space-y-3">
-                  <Button className="w-full">ذخیره در تاریخچه</Button>
-                  <Button variant="outline" className="w-full">
+                  <Button className="w-full" onClick={saveToHistory}>
+                    <svg
+                      className="w-5 h-5 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
+                    ذخیره در تاریخچه
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={shareResult}>
+                    <svg
+                      className="w-5 h-5 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                      />
+                    </svg>
                     اشتراک‌گذاری نتیجه
                   </Button>
                 </div>
@@ -659,11 +833,13 @@ export default function ScanPage() {
           </div>
         </div>
       </MainLayout>
+      </AuthGuard>
     );
   }
 
   return (
-    <MainLayout>
+    <AuthGuard>
+      <MainLayout>
       <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
@@ -914,5 +1090,6 @@ export default function ScanPage() {
         </div>
       </div>
     </MainLayout>
+    </AuthGuard>
   );
 }
