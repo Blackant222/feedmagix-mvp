@@ -356,11 +356,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 4: Final assessment
+    console.log('=== AI ANALYSIS DEBUG ===');
+    console.log('Product Data:', JSON.stringify(productData, null, 2));
+    console.log('Pet Info:', JSON.stringify(petInfo, null, 2));
+    console.log('Web Data:', JSON.stringify(webData, null, 2));
+    
     const analysisResult = await FoodAnalysisAgents.finalAssessmentAgent(
       { ...productData, ...webData },
       petInfo || {},
       type
     );
+    
+    console.log('AI Analysis Result:', JSON.stringify(analysisResult, null, 2));
+    console.log('=== END AI ANALYSIS DEBUG ===');
 
     const processingTime = Date.now() - startTime;
 
