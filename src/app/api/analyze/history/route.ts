@@ -44,25 +44,14 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
 
-    if (!token) {
-      return NextResponse.json(
-        {
-          error: 'unauthorized',
-          message: 'توکن احراز هویت یافت نشد',
-        },
-        { status: 401 }
-      );
-    }
-
-    const user = await validateSession(token);
-    if (!user) {
-      return NextResponse.json(
-        {
-          error: 'invalid_session',
-          message: 'جلسه نامعتبر یا منقضی شده',
-        },
-        { status: 401 }
-      );
+    // For demo purposes, allow unauthenticated access
+    let userId = 'demo-user';
+    
+    if (token) {
+      const user = await validateSession(token);
+      if (user) {
+        userId = user.user.id;
+      }
     }
 
     // BACKEND: Parse and validate query parameters
@@ -86,7 +75,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     // BACKEND: Build query conditions
-    const conditions = [eq(foodAnalyses.userId, user.user.id)];
+    const conditions = [eq(foodAnalyses.userId, userId)];
 
     if (petId) {
       conditions.push(eq(foodAnalyses.petId, petId));

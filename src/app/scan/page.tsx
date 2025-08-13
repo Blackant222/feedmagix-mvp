@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 // # FIX: Replaced mock data with real API client
 import { apiClient } from '@/lib/api-client';
+import html2canvas from 'html2canvas';
 
 interface ScanResult {
   id: string;
@@ -47,6 +48,7 @@ export default function ScanPage() {
   const [selectedPet, setSelectedPet] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const [pets, setPets] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [, setLoadingPets] = useState(true);
@@ -392,19 +394,52 @@ export default function ScanPage() {
     if (!scanResult) return;
     
     try {
+      // Take screenshot of results
+      let screenshotBlob: Blob | null = null;
+      if (resultsRef.current) {
+        try {
+          const canvas = await html2canvas(resultsRef.current, {
+             background: '#ffffff',
+             useCORS: true,
+             allowTaint: true
+           });
+          
+          screenshotBlob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => {
+              resolve(blob!);
+            }, 'image/png', 0.9);
+          });
+        } catch (screenshotError) {
+          console.warn('Screenshot failed:', screenshotError);
+        }
+      }
+      
       const shareData = {
         title: `تحلیل غذای ${scanResult.productName}`,
         text: `امتیاز ایمنی: ${scanResult.safetyScore}/100\n${scanResult.summary || 'تحلیل کامل محصول غذایی'}`,
-        url: window.location.href
+        url: window.location.href,
+        ...(screenshotBlob && { files: [new File([screenshotBlob], 'scan-result.png', { type: 'image/png' })] })
       };
       
       if (navigator.share && navigator.canShare(shareData)) {
         await navigator.share(shareData);
       } else {
-        // Fallback: Copy to clipboard
-        const textToShare = `${shareData.title}\n${shareData.text}\n${shareData.url}`;
-        await navigator.clipboard.writeText(textToShare);
-        alert('نتیجه در کلیپ‌بورد کپی شد!');
+        // Fallback: Copy to clipboard or download screenshot
+        if (screenshotBlob) {
+          const url = URL.createObjectURL(screenshotBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `تحلیل-غذا-${scanResult.productName}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          alert('تصویر نتیجه دانلود شد!');
+        } else {
+          const textToShare = `${shareData.title}\n${shareData.text}\n${shareData.url}`;
+          await navigator.clipboard.writeText(textToShare);
+          alert('نتیجه در کلیپ‌بورد کپی شد!');
+        }
       }
     } catch (error) {
       console.error('Error sharing result:', error);
@@ -439,7 +474,7 @@ export default function ScanPage() {
     return (
       <MainLayout>
         <div className="min-h-screen bg-background-primary p-4 md:p-6 lg:p-8">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto" ref={resultsRef}>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-h1 font-bold text-text-primary persian-heading">
