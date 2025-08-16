@@ -1,57 +1,21 @@
 {
-  "name": "feedmagix",
-  "version": "0.1.0",
-  "private": true,
+  "name": "feed-magix-monorepo",
+  "version": "1.0.0",
+  "description": "Feed Magix - Landing Page and App Monorepo",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
-    "format": "prettier --write '**/*.{js,jsx,ts,tsx,css,md,json}'",
-    "format:check": "prettier --check '**/*.{js,jsx,ts,tsx,css,md,json}'",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "db:drop": "drizzle-kit drop"
-  },
-  "dependencies": {
-    "@neondatabase/serverless": "^1.0.1",
-    "@radix-ui/react-avatar": "^1.1.10",
-    "@radix-ui/react-slot": "^1.2.3",
-    "@radix-ui/react-toast": "^1.2.14",
-    "@radix-ui/react-tooltip": "^1.2.7",
-    "@tanstack/react-query": "^5.84.2",
-    "@vercel/postgres": "^0.10.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "dayjs": "^1.11.13",
-    "drizzle-kit": "^0.31.4",
-    "drizzle-orm": "^0.44.4",
-    "framer-motion": "^12.23.12",
-    "html2canvas": "^1.4.1",
-    "jalaliday": "^3.1.0",
-    "jose": "^6.0.12",
-    "lucide-react": "^0.539.0",
-    "next": "15.4.6",
-    "openai": "^5.12.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "tailwind-merge": "^3.3.1",
-    "zod": "^3.25.76"
+    "dev": "concurrently \"npm run dev:app\" \"npm run dev:landing\"",
+    "dev:app": "cd app && npm run dev -- --port 3001",
+    "dev:landing": "cd landing && npm run dev -- --port 3000",
+    "build": "npm run build:app && npm run build:landing",
+    "build:app": "cd app && npm run build",
+    "build:landing": "cd landing && npm run build",
+    "install:all": "npm install && cd app && npm install && cd ../landing && npm install"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
-    "@types/html2canvas": "^0.5.35",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.4.6",
-    "prettier": "^3.6.2",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": [
+    "app",
+    "landing"
+  ]
 }
